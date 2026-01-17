@@ -8,16 +8,31 @@ export interface SqsDeserializedMessage {
   id?: string;
 }
 
+export interface SqsDeserializerOptions {
+  /**
+   * Custom key name for the message pattern field.
+   * @default 'pattern'
+   * @example 'type' -> reads pattern from { type: 'ORDER_CREATED', data: {...} }
+   */
+  patternKey?: string;
+}
+
 export class SqsDeserializer
   implements Deserializer<AWS.SQS.Message, IncomingRequest | IncomingEvent>
 {
+  private readonly patternKey: string;
+
+  constructor(options?: SqsDeserializerOptions) {
+    this.patternKey = options?.patternKey ?? 'pattern';
+  }
+
   deserialize(message: AWS.SQS.Message): IncomingRequest | IncomingEvent {
     const body = message.Body;
     if (!body) {
       throw new Error('Message body is empty');
     }
 
-    let parsed: SqsDeserializedMessage;
+    let parsed: Record<string, unknown>;
 
     try {
       parsed = JSON.parse(body);
@@ -31,14 +46,15 @@ export class SqsDeserializer
       };
     }
 
-    // If parsed object has pattern/data structure, use it
-    if (parsed.pattern !== undefined) {
+    // If parsed object has patternKey field, use it as pattern
+    const patternValue = parsed[this.patternKey];
+    if (patternValue !== undefined) {
       const correlationId =
-        message.MessageAttributes?.[CORRELATION_ID_HEADER]?.StringValue || parsed.id;
+        message.MessageAttributes?.[CORRELATION_ID_HEADER]?.StringValue || (parsed.id as string);
 
       return {
-        pattern: parsed.pattern,
-        data: parsed.data,
+        pattern: patternValue as string,
+        data: parsed.data ?? parsed, // Use data field if present, otherwise whole message
         id: correlationId,
       };
     }

@@ -27,8 +27,9 @@ export class ClientSqs extends ClientProxy {
       sqs: options.sqs,
     });
 
-    // Set up serializer
-    this.sqsSerializer = (options.serializer as SqsSerializer) ?? new SqsSerializer();
+    // Set up serializer with patternKey support
+    this.sqsSerializer =
+      (options.serializer as SqsSerializer) ?? new SqsSerializer({ patternKey: options.patternKey });
 
     // Set up S3 handler if enabled
     if (options.s3LargeMessage?.enabled) {

@@ -31,9 +31,10 @@ export class ServerSqs extends Server implements CustomTransportStrategy {
   constructor(private readonly options: SqsServerOptions) {
     super();
 
-    // Set up deserializer
+    // Set up deserializer with patternKey support
     this.initializeDeserializer({
-      deserializer: options.deserializer ?? new SqsDeserializer(),
+      deserializer:
+        options.deserializer ?? new SqsDeserializer({ patternKey: options.patternKey }),
     });
 
     // Set up S3 handler if enabled

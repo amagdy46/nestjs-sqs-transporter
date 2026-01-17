@@ -59,6 +59,13 @@ export interface SqsServerOptions {
   observability?: ObservabilityOptions;
   serializer?: Serializer;
   deserializer?: Deserializer;
+  /**
+   * Custom key name for the message pattern field.
+   * Use 'type' if your messages use { type: 'EVENT_NAME', ... } format.
+   * @default 'pattern'
+   * @example 'type' -> reads pattern from { type: 'ORDER_CREATED', data: {...} }
+   */
+  patternKey?: string;
 }
 
 export interface SqsClientOptions {
@@ -74,6 +81,13 @@ export interface SqsClientOptions {
     messageGroupId?: string | ((pattern: string, data: unknown) => string);
     deduplicationId?: (pattern: string, data: unknown) => string;
   };
+  /**
+   * Custom key name for the message pattern field.
+   * Use 'type' if your messages use { type: 'EVENT_NAME', ... } format.
+   * @default 'pattern'
+   * @example 'type' -> sends as { type: 'ORDER_CREATED', data: {...} }
+   */
+  patternKey?: string;
 }
 
 // Re-export for convenience

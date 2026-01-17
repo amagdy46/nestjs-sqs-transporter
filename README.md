@@ -116,6 +116,29 @@ export class OrderService {
 
 ## Advanced Features
 
+### Custom Pattern Key
+
+By default, messages use `pattern` as the field name for event routing. If your system uses `type` instead:
+
+```typescript
+// Server - read pattern from 'type' field
+new ServerSqs({
+  sqs: new SQSClient({ region: 'us-east-1' }),
+  consumerOptions: { queueUrl: '...' },
+  patternKey: 'type', // Reads from { type: 'ORDER_CREATED', data: {...} }
+});
+
+// Client - serialize pattern as 'type' field
+{
+  customClass: ClientSqs,
+  options: {
+    sqs: new SQSClient({ region: 'us-east-1' }),
+    queueUrl: '...',
+    patternKey: 'type', // Sends as { type: 'ORDER_CREATED', data: {...} }
+  },
+}
+```
+
 ### S3 Large Messages
 
 For messages larger than 256KB:
