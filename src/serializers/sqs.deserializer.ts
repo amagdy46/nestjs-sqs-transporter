@@ -52,9 +52,13 @@ export class SqsDeserializer
       const correlationId =
         message.MessageAttributes?.[CORRELATION_ID_HEADER]?.StringValue || (parsed.id as string);
 
+      // For standard NestJS format (patternKey='pattern'), data is in parsed.data
+      // For custom formats (e.g., patternKey='type'), the whole message is the data
+      const data = this.patternKey === 'pattern' ? (parsed.data ?? parsed) : parsed;
+
       return {
         pattern: patternValue as string,
-        data: parsed.data ?? parsed, // Use data field if present, otherwise whole message
+        data,
         id: correlationId,
       };
     }
