@@ -131,6 +131,8 @@ new ServerSqs({
     enabled: true,
     s3Client: new S3Client({ region: 'us-east-1' }),
     bucket: 'my-large-messages-bucket',
+    // Optional: customize the pointer key (default: '__s3pointer')
+    pointerKey: 's3Pointer', // Results in { s3Pointer: { bucket, key } }
   },
 });
 
@@ -144,6 +146,7 @@ new ServerSqs({
       enabled: true,
       s3Client: new S3Client({ region: 'us-east-1' }),
       bucket: 'my-large-messages-bucket',
+      pointerKey: 's3Pointer', // Must match server config
     },
   },
 }

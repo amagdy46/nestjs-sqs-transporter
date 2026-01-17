@@ -32,11 +32,13 @@ export class S3LargeMessageHandler {
   private readonly threshold: number;
   private readonly keyPrefix: string;
   private readonly pointerFormat: S3PointerFormat;
+  private readonly pointerKey: string;
 
   constructor(private readonly options: S3LargeMessageOptions) {
     this.threshold = options.threshold ?? S3_DEFAULT_THRESHOLD;
     this.keyPrefix = options.keyPrefix ?? S3_DEFAULT_KEY_PREFIX;
     this.pointerFormat = options.pointerFormat ?? 'auto';
+    this.pointerKey = options.pointerKey ?? S3_POINTER_KEY;
   }
 
   /**
@@ -78,9 +80,9 @@ export class S3LargeMessageHandler {
       return JSON.stringify([pointer]);
     }
 
-    // 'simple' or 'auto' - use simple format
+    // 'simple' or 'auto' - use simple format with custom pointer key
     const pointer: Record<string, SimpleS3Pointer> = {
-      [S3_POINTER_KEY]: { bucket, key },
+      [this.pointerKey]: { bucket, key },
     };
     return JSON.stringify(pointer);
   }
@@ -200,14 +202,15 @@ export class S3LargeMessageHandler {
   }
 
   /**
-   * Parse simple format: { s3Pointer: { bucket, key } }
+   * Parse simple format: { pointerKey: { bucket, key } }
+   * Uses the configured pointerKey (default: '__s3pointer')
    */
   private parseSimpleFormat(parsed: unknown): NormalizedPointer | null {
     if (typeof parsed !== 'object' || parsed === null) {
       return null;
     }
 
-    const s3Pointer = (parsed as Record<string, unknown>)[S3_POINTER_KEY];
+    const s3Pointer = (parsed as Record<string, unknown>)[this.pointerKey];
 
     if (typeof s3Pointer !== 'object' || s3Pointer === null) {
       return null;

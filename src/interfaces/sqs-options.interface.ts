@@ -18,6 +18,13 @@ export interface S3LargeMessageOptions {
    * @default 'auto'
    */
   pointerFormat?: S3PointerFormat;
+  /**
+   * Custom key name for the S3 pointer in 'simple' format.
+   * Only used when pointerFormat is 'simple' or 'auto'.
+   * @default '__s3pointer'
+   * @example 's3Pointer' -> { s3Pointer: { bucket, key } }
+   */
+  pointerKey?: string;
 }
 
 export interface DLQOptions {
