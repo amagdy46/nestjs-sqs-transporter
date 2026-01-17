@@ -1,6 +1,6 @@
 {
   "name": "nestjs-sqs-transporter",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "NestJS SQS Custom Transporter following official microservice patterns with S3 large message support, DLQ handling, and OpenTelemetry observability",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
