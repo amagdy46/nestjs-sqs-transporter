@@ -1,1 +1,1 @@
-export * from './sqs-options.interface';
+export * from "./sqs-options.interface";

@@ -1,216 +1,486 @@
-import type { MessageAttributeValue } from '@aws-sdk/client-sqs';
-import { Logger } from '@nestjs/common';
-import { ClientProxy, type ReadPacket, type WritePacket } from '@nestjs/microservices';
-import { Producer, type Message as ProducerMessage } from 'sqs-producer';
-import { v4 as uuidv4 } from 'uuid';
-import { CORRELATION_ID_HEADER, MESSAGE_PATTERN_HEADER } from '../constants';
-import { DeduplicationHelper } from '../features/deduplication';
-import { ObservabilityHelper } from '../features/observability';
-import { S3LargeMessageHandler } from '../features/s3-large-message';
-import type { SqsClientOptions } from '../interfaces/sqs-options.interface';
-import { SqsSerializer } from '../serializers/sqs.serializer';
+import type { MessageAttributeValue } from "@aws-sdk/client-sqs";
+import { Logger } from "@nestjs/common";
+import {
+	ClientProxy,
+	type ReadPacket,
+	type WritePacket,
+} from "@nestjs/microservices";
+import { Producer, type Message as ProducerMessage } from "sqs-producer";
+import { v4 as uuidv4 } from "uuid";
+import { CORRELATION_ID_HEADER, MESSAGE_PATTERN_HEADER } from "../constants";
+import { DeduplicationHelper } from "../features/deduplication";
+import { ObservabilityHelper } from "../features/observability";
+import { S3LargeMessageHandler } from "../features/s3-large-message";
+import type { SqsClientOptions } from "../interfaces/sqs-options.interface";
+import { SqsSerializer } from "../serializers/sqs.serializer";
 
+/**
+ * Validate client options and throw descriptive errors for missing required fields
+ */
+function validateClientOptions(options: SqsClientOptions): void {
+	if (!options.sqs) {
+		throw new Error("SQSClient is required in SqsClientOptions");
+	}
+	if (!options.queueUrl) {
+		throw new Error("queueUrl is required in SqsClientOptions");
+	}
+	if (options.s3LargeMessage?.enabled && !options.s3LargeMessage.s3Client) {
+		throw new Error("s3Client is required when s3LargeMessage is enabled");
+	}
+	if (options.s3LargeMessage?.enabled && !options.s3LargeMessage.bucket) {
+		throw new Error("bucket is required when s3LargeMessage is enabled");
+	}
+}
+
+/**
+ * SQS client implementation for NestJS microservices.
+ *
+ * Extends ClientProxy to provide SQS message sending capabilities with support for:
+ * - S3 large message handling (automatic offloading of large payloads)
+ * - FIFO queue support (message grouping, deduplication)
+ * - Batch message sending (up to 10 messages per batch)
+ * - OpenTelemetry observability (tracing, metrics, logging)
+ *
+ * @example
+ * ```typescript
+ * // Register in a module
+ * @Module({
+ *   providers: [
+ *     {
+ *       provide: 'SQS_CLIENT',
+ *       useFactory: () => new ClientSqs({
+ *         sqs: new SQSClient({ region: 'us-east-1' }),
+ *         queueUrl: 'https://sqs.us-east-1.amazonaws.com/123456789012/my-queue',
+ *       }),
+ *     },
+ *   ],
+ * })
+ * export class AppModule {}
+ * ```
+ *
+ * @example
+ * ```typescript
+ * // Inject and use in a service
+ * @Injectable()
+ * export class OrderService {
+ *   constructor(@Inject('SQS_CLIENT') private readonly client: ClientSqs) {}
+ *
+ *   async createOrder(order: Order) {
+ *     // Fire-and-forget
+ *     this.client.emit('ORDER_CREATED', order);
+ *
+ *     // Or batch send
+ *     await this.client.emitBatch([
+ *       { pattern: 'ORDER_CREATED', data: order1 },
+ *       { pattern: 'ORDER_CREATED', data: order2 },
+ *     ]);
+ *   }
+ * }
+ * ```
+ */
 export class ClientSqs extends ClientProxy {
-  protected readonly logger = new Logger(ClientSqs.name);
-  private readonly producer: Producer;
-  private readonly s3Handler?: S3LargeMessageHandler;
-  private readonly observability: ObservabilityHelper;
-  private readonly sqsSerializer: SqsSerializer;
-  private connected = false;
+	protected readonly logger = new Logger(ClientSqs.name);
+	private readonly producer: Producer;
+	private readonly s3Handler?: S3LargeMessageHandler;
+	private readonly observability: ObservabilityHelper;
+	private readonly sqsSerializer: SqsSerializer;
 
-  constructor(private readonly options: SqsClientOptions) {
-    super();
+	/**
+	 * Creates a new SQS client instance.
+	 *
+	 * @param options - Configuration options for the SQS client
+	 * @throws Error if required options are missing (sqs, queueUrl) or invalid
+	 */
+	constructor(private readonly options: SqsClientOptions) {
+		super();
 
-    // Create the sqs-producer instance
-    this.producer = Producer.create({
-      queueUrl: options.queueUrl,
-      sqs: options.sqs,
-    });
+		// Validate options
+		validateClientOptions(options);
 
-    // Set up serializer with patternKey support
-    this.sqsSerializer =
-      (options.serializer as SqsSerializer) ?? new SqsSerializer({ patternKey: options.patternKey });
+		// Create the sqs-producer instance
+		this.producer = Producer.create({
+			queueUrl: options.queueUrl,
+			sqs: options.sqs,
+		});
 
-    // Set up S3 handler if enabled
-    if (options.s3LargeMessage?.enabled) {
-      this.s3Handler = new S3LargeMessageHandler(options.s3LargeMessage);
-    }
+		// Set up serializer with patternKey support
+		this.sqsSerializer =
+			(options.serializer as SqsSerializer) ??
+			new SqsSerializer({ patternKey: options.patternKey });
 
-    // Set up observability
-    this.observability = new ObservabilityHelper(options.observability);
-  }
+		// Set up S3 handler if enabled
+		if (options.s3LargeMessage?.enabled) {
+			this.s3Handler = new S3LargeMessageHandler(options.s3LargeMessage);
+		}
 
-  /**
-   * Connect to SQS (no-op for SQS as it's stateless)
-   */
-  async connect(): Promise<void> {
-    this.connected = true;
-    this.logger.log('SQS Client connected');
-    this.observability.log('SQS Client connected', 'SqsClient');
-  }
+		// Set up observability
+		this.observability = new ObservabilityHelper(options.observability);
+	}
 
-  /**
-   * Close connection (no-op for SQS)
-   */
-  close(): void {
-    this.connected = false;
-    this.logger.log('SQS Client closed');
-    this.observability.log('SQS Client closed', 'SqsClient');
-  }
+	/**
+	 * Connect to SQS.
+	 *
+	 * This is a no-op for SQS as it uses HTTP and is stateless. However, it's
+	 * implemented to comply with the ClientProxy interface and can be used to
+	 * mark the client as ready for sending messages.
+	 *
+	 * @returns Promise that resolves immediately
+	 *
+	 * @example
+	 * ```typescript
+	 * await client.connect();
+	 * // Client is now ready to send messages
+	 * ```
+	 */
+	async connect(): Promise<void> {
+		this.logger.log("SQS Client connected");
+		this.observability.log("SQS Client connected", "SqsClient");
+	}
 
-  /**
-   * Unwrap the client instance (required by NestJS v11+)
-   */
-  unwrap<T>(): T {
-    return this as unknown as T;
-  }
+	/**
+	 * Close the SQS client connection.
+	 *
+	 * This is a no-op for SQS as it uses HTTP and is stateless. However, it's
+	 * implemented to comply with the ClientProxy interface and marks the client
+	 * as disconnected.
+	 *
+	 * @example
+	 * ```typescript
+	 * client.close();
+	 * // Client is now marked as closed
+	 * ```
+	 */
+	close(): void {
+		this.logger.log("SQS Client closed");
+		this.observability.log("SQS Client closed", "SqsClient");
+	}
 
-  /**
-   * Publish a message and wait for response (request-response pattern)
-   * Note: This requires a response queue setup which is more complex.
-   * For now, this will just send and not wait for response.
-   */
-  protected publish(
-    packet: ReadPacket<unknown>,
-    callback: (packet: WritePacket<unknown>) => void,
-  ): () => void {
-    const correlationId = uuidv4();
+	/**
+	 * Unwrap the client instance (required by NestJS v11+)
+	 */
+	unwrap<T>(): T {
+		return this as unknown as T;
+	}
 
-    this.sendMessage(packet.pattern, packet.data, correlationId)
-      .then(() => {
-        // For fire-and-forget, just acknowledge
-        callback({ response: { success: true } });
-      })
-      .catch((err) => {
-        callback({ err });
-      });
+	/**
+	 * Publish a message and wait for response (request-response pattern)
+	 * Note: This requires a response queue setup which is more complex.
+	 * For now, this will just send and not wait for response.
+	 */
+	protected publish(
+		packet: ReadPacket<unknown>,
+		callback: (packet: WritePacket<unknown>) => void,
+	): () => void {
+		const correlationId = uuidv4();
 
-    return () => {
-      // Cleanup function - nothing to clean up for SQS
-    };
-  }
+		this.sendMessage(packet.pattern, packet.data, correlationId)
+			.then(() => {
+				// For fire-and-forget, just acknowledge
+				callback({ response: { success: true } });
+			})
+			.catch((err) => {
+				callback({ err });
+			});
 
-  /**
-   * Dispatch an event (fire-and-forget pattern)
-   */
-  protected async dispatchEvent<T = void>(packet: ReadPacket<unknown>): Promise<T> {
-    return this.observability.createSpan(
-      {
-        name: 'sqs.dispatchEvent',
-        attributes: {
-          'sqs.pattern': packet.pattern,
-          'sqs.queue_url': this.options.queueUrl,
-        },
-      },
-      async () => {
-        await this.sendMessage(packet.pattern, packet.data);
-        return undefined as T;
-      },
-    ) as Promise<T>;
-  }
+		return () => {
+			// Cleanup function - nothing to clean up for SQS
+		};
+	}
 
-  /**
-   * Send a message to SQS using sqs-producer
-   */
-  private async sendMessage(
-    pattern: string,
-    data: unknown,
-    correlationId?: string,
-  ): Promise<string> {
-    const startTime = Date.now();
-    const messageId = correlationId ?? uuidv4();
+	/**
+	 * Dispatch an event (fire-and-forget pattern)
+	 */
+	protected async dispatchEvent<T = void>(
+		packet: ReadPacket<unknown>,
+	): Promise<T> {
+		return this.observability.createSpan(
+			{
+				name: "sqs.dispatchEvent",
+				attributes: {
+					"sqs.pattern": packet.pattern,
+					"sqs.queue_url": this.options.queueUrl,
+				},
+			},
+			async () => {
+				await this.sendMessage(packet.pattern, packet.data);
+				return undefined as T;
+			},
+		) as Promise<T>;
+	}
 
-    try {
-      // Serialize the message
-      let body = this.sqsSerializer.serialize({
-        pattern,
-        data,
-        id: messageId,
-      });
+	/**
+	 * Emit multiple events in a batch (fire-and-forget pattern).
+	 * SQS has a limit of 10 messages per batch, so larger batches are split automatically.
+	 *
+	 * @param messages Array of messages to send, each with pattern and data
+	 * @returns Array of message IDs for successfully sent messages
+	 *
+	 * @example
+	 * ```typescript
+	 * const messageIds = await client.emitBatch([
+	 *   { pattern: 'ORDER_CREATED', data: { orderId: '123' } },
+	 *   { pattern: 'ORDER_CREATED', data: { orderId: '456' } },
+	 * ]);
+	 * ```
+	 */
+	async emitBatch(
+		messages: Array<{ pattern: string; data: unknown }>,
+	): Promise<string[]> {
+		const startTime = Date.now();
+		const SQS_BATCH_LIMIT = 10;
 
-      // Wrap large messages with S3 if needed
-      if (this.s3Handler) {
-        body = await this.s3Handler.wrapIfLarge(body);
-      }
+		return this.observability.createSpan(
+			{
+				name: "sqs.emitBatch",
+				attributes: {
+					"sqs.batch_size": messages.length,
+					"sqs.queue_url": this.options.queueUrl,
+				},
+			},
+			async () => {
+				try {
+					// Prepare all messages
+					const producerMessages: ProducerMessage[] = await Promise.all(
+						messages.map(async ({ pattern, data }) => {
+							const messageId = uuidv4();
 
-      // Build message attributes
-      const messageAttributes: Record<string, MessageAttributeValue> = {
-        [MESSAGE_PATTERN_HEADER]: {
-          DataType: 'String',
-          StringValue: pattern,
-        },
-      };
+							// Serialize the message
+							let body = this.sqsSerializer.serialize({
+								pattern,
+								data,
+								id: messageId,
+							});
 
-      if (correlationId) {
-        messageAttributes[CORRELATION_ID_HEADER] = {
-          DataType: 'String',
-          StringValue: correlationId,
-        };
-      }
+							// Wrap large messages with S3 if needed
+							if (this.s3Handler) {
+								body = await this.s3Handler.wrapIfLarge(body);
+							}
 
-      // Build the producer message
-      const producerMessage: ProducerMessage = {
-        id: messageId,
-        body,
-        messageAttributes,
-      };
+							// Build message attributes
+							const messageAttributes: Record<string, MessageAttributeValue> = {
+								[MESSAGE_PATTERN_HEADER]: {
+									DataType: "String",
+									StringValue: pattern,
+								},
+							};
 
-      // Add FIFO-specific attributes if enabled
-      if (this.options.fifo?.enabled) {
-        // Determine message group ID
-        if (typeof this.options.fifo.messageGroupId === 'function') {
-          producerMessage.groupId = this.options.fifo.messageGroupId(pattern, data);
-        } else {
-          producerMessage.groupId = this.options.fifo.messageGroupId ?? pattern;
-        }
+							// Build the producer message
+							const producerMessage: ProducerMessage = {
+								id: messageId,
+								body,
+								messageAttributes,
+							};
 
-        // Determine deduplication ID
-        if (this.options.fifo.contentBasedDeduplication !== true) {
-          if (this.options.fifo.deduplicationId) {
-            producerMessage.deduplicationId = this.options.fifo.deduplicationId(pattern, data);
-          } else {
-            producerMessage.deduplicationId = DeduplicationHelper.contentBasedDeduplicationId({
-              pattern,
-              data,
-            });
-          }
-        }
-      }
+							// Add FIFO-specific attributes if enabled
+							if (this.options.fifo?.enabled) {
+								if (typeof this.options.fifo.messageGroupId === "function") {
+									producerMessage.groupId = this.options.fifo.messageGroupId(
+										pattern,
+										data,
+									);
+								} else {
+									producerMessage.groupId =
+										this.options.fifo.messageGroupId ?? pattern;
+								}
 
-      // Send the message using sqs-producer
-      const results = await this.producer.send([producerMessage]);
-      const resultMessageId = results[0]?.MessageId ?? messageId;
+								if (this.options.fifo.contentBasedDeduplication !== true) {
+									if (this.options.fifo.deduplicationId) {
+										producerMessage.deduplicationId =
+											this.options.fifo.deduplicationId(pattern, data);
+									} else {
+										producerMessage.deduplicationId =
+											DeduplicationHelper.contentBasedDeduplicationId({
+												pattern,
+												data,
+											});
+									}
+								}
+							}
 
-      // Record success metric
-      const duration = Date.now() - startTime;
-      this.observability.recordMetric('sqs.message.sent', 1, {
-        pattern,
-        status: 'success',
-      });
-      this.observability.recordMetric('sqs.message.send_duration', duration, {
-        pattern,
-      });
+							return producerMessage;
+						}),
+					);
 
-      this.logger.debug(`Message sent to SQS: ${resultMessageId}`);
+					// Send in batches of 10 (SQS limit)
+					const results: string[] = [];
+					for (let i = 0; i < producerMessages.length; i += SQS_BATCH_LIMIT) {
+						const batch = producerMessages.slice(i, i + SQS_BATCH_LIMIT);
+						const response = await this.producer.send(batch);
+						results.push(
+							...response.map(
+								(r) => r.MessageId ?? batch[response.indexOf(r)]?.id ?? "",
+							),
+						);
+					}
 
-      return resultMessageId;
-    } catch (error) {
-      const err = error as Error;
-      this.logger.error(`Error sending message to SQS: ${err.message}`, err.stack);
-      this.observability.logError('Error sending message to SQS', err, 'SqsClient');
+					// Record success metrics
+					const duration = Date.now() - startTime;
+					this.observability.recordMetric(
+						"sqs.message.batch_sent",
+						messages.length,
+						{
+							status: "success",
+						},
+					);
+					this.observability.recordMetric(
+						"sqs.message.batch_duration",
+						duration,
+					);
 
-      // Record error metric
-      const duration = Date.now() - startTime;
-      this.observability.recordMetric('sqs.message.sent', 1, {
-        pattern,
-        status: 'error',
-      });
-      this.observability.recordMetric('sqs.message.send_duration', duration, {
-        pattern,
-        status: 'error',
-      });
+					this.logger.debug(`Batch of ${messages.length} messages sent to SQS`);
 
-      throw error;
-    }
-  }
+					return results;
+				} catch (error) {
+					const err = error as Error;
+					this.logger.error(
+						`Error sending batch to SQS: ${err.message}`,
+						err.stack,
+					);
+					this.observability.logError(
+						"Error sending batch to SQS",
+						err,
+						"SqsClient",
+					);
+
+					// Record error metrics
+					const duration = Date.now() - startTime;
+					this.observability.recordMetric(
+						"sqs.message.batch_sent",
+						messages.length,
+						{
+							status: "error",
+						},
+					);
+					this.observability.recordMetric(
+						"sqs.message.batch_duration",
+						duration,
+						{
+							status: "error",
+						},
+					);
+
+					throw error;
+				}
+			},
+		) as Promise<string[]>;
+	}
+
+	/**
+	 * Send a message to SQS using sqs-producer
+	 */
+	private async sendMessage(
+		pattern: string,
+		data: unknown,
+		correlationId?: string,
+	): Promise<string> {
+		const startTime = Date.now();
+		const messageId = correlationId ?? uuidv4();
+
+		try {
+			// Serialize the message
+			let body = this.sqsSerializer.serialize({
+				pattern,
+				data,
+				id: messageId,
+			});
+
+			// Wrap large messages with S3 if needed
+			if (this.s3Handler) {
+				body = await this.s3Handler.wrapIfLarge(body);
+			}
+
+			// Build message attributes
+			const messageAttributes: Record<string, MessageAttributeValue> = {
+				[MESSAGE_PATTERN_HEADER]: {
+					DataType: "String",
+					StringValue: pattern,
+				},
+			};
+
+			if (correlationId) {
+				messageAttributes[CORRELATION_ID_HEADER] = {
+					DataType: "String",
+					StringValue: correlationId,
+				};
+			}
+
+			// Build the producer message
+			const producerMessage: ProducerMessage = {
+				id: messageId,
+				body,
+				messageAttributes,
+			};
+
+			// Add FIFO-specific attributes if enabled
+			if (this.options.fifo?.enabled) {
+				// Determine message group ID
+				if (typeof this.options.fifo.messageGroupId === "function") {
+					producerMessage.groupId = this.options.fifo.messageGroupId(
+						pattern,
+						data,
+					);
+				} else {
+					producerMessage.groupId = this.options.fifo.messageGroupId ?? pattern;
+				}
+
+				// Determine deduplication ID
+				if (this.options.fifo.contentBasedDeduplication !== true) {
+					if (this.options.fifo.deduplicationId) {
+						producerMessage.deduplicationId = this.options.fifo.deduplicationId(
+							pattern,
+							data,
+						);
+					} else {
+						producerMessage.deduplicationId =
+							DeduplicationHelper.contentBasedDeduplicationId({
+								pattern,
+								data,
+							});
+					}
+				}
+			}
+
+			// Send the message using sqs-producer
+			const results = await this.producer.send([producerMessage]);
+			const resultMessageId = results[0]?.MessageId ?? messageId;
+
+			// Record success metric
+			const duration = Date.now() - startTime;
+			this.observability.recordMetric("sqs.message.sent", 1, {
+				pattern,
+				status: "success",
+			});
+			this.observability.recordMetric("sqs.message.send_duration", duration, {
+				pattern,
+			});
+
+			this.logger.debug(`Message sent to SQS: ${resultMessageId}`);
+
+			return resultMessageId;
+		} catch (error) {
+			const err = error as Error;
+			this.logger.error(
+				`Error sending message to SQS: ${err.message}`,
+				err.stack,
+			);
+			this.observability.logError(
+				"Error sending message to SQS",
+				err,
+				"SqsClient",
+			);
+
+			// Record error metric
+			const duration = Date.now() - startTime;
+			this.observability.recordMetric("sqs.message.sent", 1, {
+				pattern,
+				status: "error",
+			});
+			this.observability.recordMetric("sqs.message.send_duration", duration, {
+				pattern,
+				status: "error",
+			});
+
+			throw error;
+		}
+	}
 }

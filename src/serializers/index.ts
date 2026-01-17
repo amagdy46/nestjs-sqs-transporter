@@ -1,2 +1,2 @@
-export * from './sqs.deserializer';
-export * from './sqs.serializer';
+export * from "./sqs.deserializer";
+export * from "./sqs.serializer";
