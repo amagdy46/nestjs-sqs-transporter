@@ -16,8 +16,6 @@
   <a href="https://codecov.io/gh/amagdy46/nestjs-sqs-transporter"><img src="https://img.shields.io/codecov/c/github/amagdy46/nestjs-sqs-transporter" alt="Coverage" /></a>
   <a href="https://www.npmjs.com/package/nestjs-sqs-transporter"><img src="https://img.shields.io/npm/types/nestjs-sqs-transporter" alt="TypeScript" /></a>
   <img src="https://img.shields.io/node/v/nestjs-sqs-transporter" alt="Node Version" />
-  <a href="https://github.com/amagdy46/nestjs-sqs-transporter"><img src="https://img.shields.io/github/stars/amagdy46/nestjs-sqs-transporter?style=flat" alt="GitHub Stars" /></a>
-  <a href="https://github.com/amagdy46/nestjs-sqs-transporter/commits/main"><img src="https://img.shields.io/github/last-commit/amagdy46/nestjs-sqs-transporter" alt="Last Commit" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/npm/l/nestjs-sqs-transporter" alt="License" /></a>
 </p>
 
