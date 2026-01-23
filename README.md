@@ -49,14 +49,12 @@ Tested with: AWS SQS and LocalStack.
 
 ## Why nestjs-sqs-transporter?
 
-| Feature | nestjs-sqs-transporter | @ssut/nestjs-sqs |
-|---------|------------------------|------------------|
-| Official NestJS patterns | ✅ `@EventPattern` | ❌ Custom decorators |
-| S3 large message support | ✅ Built-in | ❌ Manual |
-| FIFO queue support | ✅ Full support | ✅ Basic |
-| OpenTelemetry | ✅ Optional | ❌ No |
-| Testing utilities | ✅ MockClientSqs | ❌ No |
-| Custom pattern key | ✅ Configurable | ❌ No |
+- **Official NestJS patterns** — Uses `@EventPattern` and `ClientProxy` just like other NestJS transporters
+- **S3 large message support** — Automatically offloads payloads >256KB to S3, no manual handling
+- **FIFO queue support** — Full support with dynamic `messageGroupId` and `deduplicationId` functions
+- **OpenTelemetry ready** — Optional tracing and metrics for production observability
+- **Testing utilities** — `MockClientSqs` for easy unit testing without AWS
+- **Flexible routing** — Custom `patternKey` for integration with external systems
 
 ## Installation
 
