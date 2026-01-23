@@ -6,6 +6,10 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
     exclude: ['node_modules', 'dist'],
+    reporters: ['default', 'junit'],
+    outputFile: {
+      junit: './junit.xml',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
