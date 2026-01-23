@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Background circle -->
+  <circle cx="60" cy="60" r="55" fill="#E41F4E" opacity="0.1"/>
+
+  <!-- Queue representation (three stacked rectangles) -->
+  <rect x="25" y="35" width="70" height="14" rx="3" fill="#FF9900"/>
+  <rect x="25" y="53" width="70" height="14" rx="3" fill="#FF9900" opacity="0.8"/>
+  <rect x="25" y="71" width="70" height="14" rx="3" fill="#FF9900" opacity="0.6"/>
+
+  <!-- Arrow indicating message flow -->
+  <path d="M100 60 L110 60 M105 55 L110 60 L105 65" stroke="#E41F4E" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 60 L20 60 M10 55 L10 65" stroke="#E41F4E" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- NestJS cat silhouette hint -->
+  <circle cx="60" cy="60" r="8" fill="#E41F4E"/>
+</svg>

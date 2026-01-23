@@ -1,8 +1,43 @@
-# NestJS SQS Transporter
+<p align="center">
+  <img src="./assets/logo.svg" width="120" alt="nestjs-sqs-transporter logo" />
+</p>
 
-NestJS microservice transporter for AWS SQS following official patterns.
+<h1 align="center">nestjs-sqs-transporter</h1>
+
+<p align="center">
+  <strong>NestJS microservice transporter for AWS SQS</strong><br/>
+  Built on official NestJS patterns with S3 large message support, FIFO queues, and OpenTelemetry observability.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/nestjs-sqs-transporter"><img src="https://img.shields.io/npm/v/nestjs-sqs-transporter.svg" alt="NPM Version" /></a>
+  <a href="https://www.npmjs.com/package/nestjs-sqs-transporter"><img src="https://img.shields.io/npm/dm/nestjs-sqs-transporter.svg" alt="NPM Downloads" /></a>
+  <a href="https://github.com/amagdy46/nestjs-sqs-transporter/actions"><img src="https://img.shields.io/github/actions/workflow/status/amagdy46/nestjs-sqs-transporter/ci.yml?branch=main" alt="Build Status" /></a>
+  <a href="https://codecov.io/gh/amagdy46/nestjs-sqs-transporter"><img src="https://img.shields.io/codecov/c/github/amagdy46/nestjs-sqs-transporter" alt="Coverage" /></a>
+  <a href="https://www.npmjs.com/package/nestjs-sqs-transporter"><img src="https://img.shields.io/npm/types/nestjs-sqs-transporter" alt="TypeScript" /></a>
+  <a href="https://bundlephobia.com/package/nestjs-sqs-transporter"><img src="https://img.shields.io/bundlephobia/minzip/nestjs-sqs-transporter" alt="Bundle Size" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/npm/l/nestjs-sqs-transporter" alt="License" /></a>
+</p>
+
+---
 
 Tested with: AWS SQS and LocalStack.
+
+## Table of Contents
+
+- [Features](#features)
+- [Why nestjs-sqs-transporter?](#why-nestjs-sqs-transporter)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Advanced Features](#advanced-features)
+  - [Custom Pattern Key](#custom-pattern-key)
+  - [S3 Large Messages](#s3-large-messages)
+  - [FIFO Queues](#fifo-queues)
+  - [Observability](#observability)
+- [Testing](#testing)
+- [API Reference](#api-reference)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -11,6 +46,17 @@ Tested with: AWS SQS and LocalStack.
 - FIFO queue support with flexible configuration
 - OpenTelemetry observability (optional)
 - Testing utilities (MockServerSqs, MockClientSqs)
+
+## Why nestjs-sqs-transporter?
+
+| Feature | nestjs-sqs-transporter | @ssut/nestjs-sqs |
+|---------|------------------------|------------------|
+| Official NestJS patterns | ✅ `@EventPattern` | ❌ Custom decorators |
+| S3 large message support | ✅ Built-in | ❌ Manual |
+| FIFO queue support | ✅ Full support | ✅ Basic |
+| OpenTelemetry | ✅ Optional | ❌ No |
+| Testing utilities | ✅ MockClientSqs | ❌ No |
+| Custom pattern key | ✅ Configurable | ❌ No |
 
 ## Installation
 
@@ -205,7 +251,7 @@ new ServerSqs({
 });
 ```
 
-### Testing
+## Testing
 
 ```typescript
 import { MockClientSqs } from 'nestjs-sqs-transporter';
@@ -237,6 +283,7 @@ describe('OrderService', () => {
 | `consumerOptions.queueUrl` | `string` | Yes | Queue URL |
 | `consumerOptions.waitTimeSeconds` | `number` | No | Long poll wait (default: 20) |
 | `consumerOptions.batchSize` | `number` | No | Messages per poll (default: 10) |
+| `patternKey` | `string` | No | Field name for pattern (default: `pattern`) |
 | `s3LargeMessage` | `object` | No | S3 offloading config |
 | `observability` | `object` | No | Tracing/metrics config |
 
@@ -246,6 +293,7 @@ describe('OrderService', () => {
 |--------|------|----------|-------------|
 | `sqs` | `SQSClient` | Yes | AWS SQS client |
 | `queueUrl` | `string` | Yes | Target queue URL |
+| `patternKey` | `string` | No | Field name for pattern (default: `pattern`) |
 | `fifo` | `object` | No | FIFO queue config |
 | `s3LargeMessage` | `object` | No | S3 offloading config |
 | `observability` | `object` | No | Tracing/metrics config |
@@ -259,6 +307,10 @@ describe('OrderService', () => {
 | `getPattern()` | Message pattern |
 | `getReceiptHandle()` | Receipt handle |
 | `getApproximateReceiveCount()` | Receive count |
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
