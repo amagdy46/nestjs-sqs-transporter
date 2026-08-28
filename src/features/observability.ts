@@ -140,7 +140,11 @@ export class ObservabilityHelper {
 
 		switch (this.logLevel) {
 			case "debug":
-				this.logger.debug?.(message, context);
+				if (this.logger.debug) {
+					this.logger.debug(message, context);
+				} else {
+					this.logger.log(message, context);
+				}
 				break;
 			case "info":
 				this.logger.log(message, context);

@@ -255,9 +255,11 @@ new ServerSqs({
 ```
 
 When a logger is configured, lifecycle and error events are sent only to that
-logger. Metrics require the optional OpenTelemetry API; if it is unavailable,
-the transporter warns once and drops metrics instead of writing each metric as
-a log event.
+logger. At `debug` level, a logger without the optional `debug` method receives
+lifecycle events through its required `log` method instead. Metrics require the
+optional OpenTelemetry API; if it is unavailable, the transporter drops metrics
+instead of writing each metric as a log event. It warns once when a logger is
+configured and otherwise drops them silently.
 
 ## Testing
 

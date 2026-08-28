@@ -158,6 +158,7 @@ describe("ObservabilityHelper", () => {
 					"Debug message",
 					"TestContext",
 				);
+				expect(mockLogger.log).not.toHaveBeenCalled();
 			});
 		});
 
@@ -243,13 +244,17 @@ describe("ObservabilityHelper", () => {
 		});
 
 		describe("with logger missing debug method", () => {
+			let loggerWithoutDebug: LoggerService;
+			let fallbackLog: Mock;
+
 			beforeEach(() => {
-				const loggerWithoutDebug = {
-					log: vi.fn(),
+				fallbackLog = vi.fn();
+				loggerWithoutDebug = {
+					log: fallbackLog,
 					error: vi.fn(),
 					warn: vi.fn(),
 					// debug is optional in LoggerService
-				} as unknown as LoggerService;
+				};
 
 				helper = new ObservabilityHelper({
 					logging: {
@@ -259,8 +264,16 @@ describe("ObservabilityHelper", () => {
 				});
 			});
 
-			it("should not throw when debug is not available", () => {
-				expect(() => helper.log("Debug message")).not.toThrow();
+			it("should fall back to log exactly once when debug is not available", () => {
+				helper.log("Debug message", "TestContext");
+
+				expect(fallbackLog).toHaveBeenCalledTimes(1);
+				expect(fallbackLog).toHaveBeenCalledWith(
+					"Debug message",
+					"TestContext",
+				);
+				expect(loggerWithoutDebug.warn).not.toHaveBeenCalled();
+				expect(loggerWithoutDebug.error).not.toHaveBeenCalled();
 			});
 		});
 	});
