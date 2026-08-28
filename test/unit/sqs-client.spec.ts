@@ -780,6 +780,7 @@ describe("ClientSqs", () => {
 				"SQS Client connected",
 				"SqsClient",
 			);
+			expect(Logger.prototype.log).not.toHaveBeenCalled();
 		});
 
 		it("should call observability on close", () => {
@@ -789,6 +790,27 @@ describe("ClientSqs", () => {
 				"SQS Client closed",
 				"SqsClient",
 			);
+			expect(Logger.prototype.log).not.toHaveBeenCalled();
+		});
+
+		it("should log send errors only through the observability logger", async () => {
+			mockProducer.send.mockRejectedValue(new Error("SQS send error"));
+
+			await expect(
+				(
+					client as unknown as {
+						dispatchEvent: (packet: unknown) => Promise<unknown>;
+					}
+				).dispatchEvent({ pattern: "ERROR_EVENT", data: {} }),
+			).rejects.toThrow("SQS send error");
+
+			expect(mockLogger.error).toHaveBeenCalledTimes(1);
+			expect(mockLogger.error).toHaveBeenCalledWith(
+				"Error sending message to SQS",
+				expect.any(String),
+				"SqsClient",
+			);
+			expect(Logger.prototype.error).not.toHaveBeenCalled();
 		});
 	});
 

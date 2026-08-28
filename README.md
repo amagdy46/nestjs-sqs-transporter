@@ -239,15 +239,25 @@ new ServerSqs({
 ### Observability
 
 ```typescript
+import { Logger } from '@nestjs/common';
+
 new ServerSqs({
   // ...
   observability: {
     tracing: true,
     metrics: true,
-    logging: { level: 'debug' },
+    logging: {
+      logger: new Logger('SqsTelemetry'),
+      level: 'debug',
+    },
   },
 });
 ```
+
+When a logger is configured, lifecycle and error events are sent only to that
+logger. Metrics require the optional OpenTelemetry API; if it is unavailable,
+the transporter warns once and drops metrics instead of writing each metric as
+a log event.
 
 ## Testing
 

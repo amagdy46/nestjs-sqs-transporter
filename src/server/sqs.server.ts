@@ -86,6 +86,7 @@ export class ServerSqs extends Server implements CustomTransportStrategy {
 	private consumer: Consumer | null = null;
 	private readonly s3Handler?: S3LargeMessageHandler;
 	private readonly observability: ObservabilityHelper;
+	private readonly observabilityLoggingEnabled: boolean;
 	private activeMessages = 0;
 
 	/**
@@ -114,6 +115,29 @@ export class ServerSqs extends Server implements CustomTransportStrategy {
 
 		// Set up observability
 		this.observability = new ObservabilityHelper(options.observability);
+		this.observabilityLoggingEnabled = Boolean(
+			options.observability?.logging?.logger,
+		);
+	}
+
+	private logLifecycle(message: string): void {
+		if (this.observabilityLoggingEnabled) {
+			this.observability.log(message, "SqsServer");
+			return;
+		}
+		this.logger.log(message);
+	}
+
+	private logError(
+		message: string,
+		error: Error,
+		nativeMessage = message,
+	): void {
+		if (this.observabilityLoggingEnabled) {
+			this.observability.logError(message, error, "SqsServer");
+			return;
+		}
+		this.logger.error(nativeMessage, error.stack);
 	}
 
 	/**
@@ -183,23 +207,19 @@ export class ServerSqs extends Server implements CustomTransportStrategy {
 		});
 
 		this.consumer.on("error", (err) => {
-			this.logger.error("SQS Consumer error", err.stack);
-			this.observability.logError("SQS Consumer error", err, "SqsServer");
+			this.logError("SQS Consumer error", err);
 		});
 
 		this.consumer.on("processing_error", (err) => {
-			this.logger.error("SQS Processing error", err.stack);
-			this.observability.logError("SQS Processing error", err, "SqsServer");
+			this.logError("SQS Processing error", err);
 		});
 
 		this.consumer.on("started", () => {
-			this.logger.log("SQS Consumer started");
-			this.observability.log("SQS Consumer started", "SqsServer");
+			this.logLifecycle("SQS Consumer started");
 		});
 
 		this.consumer.on("stopped", () => {
-			this.logger.log("SQS Consumer stopped");
-			this.observability.log("SQS Consumer stopped", "SqsServer");
+			this.logLifecycle("SQS Consumer stopped");
 		});
 
 		this.consumer.start();
@@ -249,8 +269,7 @@ export class ServerSqs extends Server implements CustomTransportStrategy {
 			this.consumer = null;
 		}
 
-		this.logger.log("SQS Consumer closed");
-		this.observability.log("SQS Consumer closed", "SqsServer");
+		this.logLifecycle("SQS Consumer closed");
 	}
 
 	/**
@@ -330,14 +349,10 @@ export class ServerSqs extends Server implements CustomTransportStrategy {
 					});
 				} catch (error) {
 					const err = error as Error;
-					this.logger.error(
-						`Error processing message: ${err.message}`,
-						err.stack,
-					);
-					this.observability.logError(
+					this.logError(
 						"Error processing message",
 						err,
-						"SqsServer",
+						`Error processing message: ${err.message}`,
 					);
 
 					// Record error metric

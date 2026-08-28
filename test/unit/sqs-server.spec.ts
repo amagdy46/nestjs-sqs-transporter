@@ -956,10 +956,16 @@ describe("ServerSqs", () => {
 
 	describe("Observability Integration", () => {
 		let handleMessageFn: (message: Message) => Promise<void>;
+		let mockLogger: {
+			log: Mock;
+			error: Mock;
+			warn: Mock;
+			debug: Mock;
+		};
 
 		beforeEach(() => {
 			// We need to test with a real ObservabilityHelper that has been configured
-			const mockLogger = {
+			mockLogger = {
 				log: vi.fn(),
 				error: vi.fn(),
 				warn: vi.fn(),
@@ -985,6 +991,30 @@ describe("ServerSqs", () => {
 			});
 
 			server.listen(() => {});
+		});
+
+		it("should log lifecycle events only through the observability logger", () => {
+			consumerEventHandlers.get("started")?.();
+
+			expect(mockLogger.log).toHaveBeenCalledTimes(1);
+			expect(mockLogger.log).toHaveBeenCalledWith(
+				"SQS Consumer started",
+				"SqsServer",
+			);
+			expect(Logger.prototype.log).not.toHaveBeenCalled();
+		});
+
+		it("should log consumer errors only through the observability logger", () => {
+			const error = new Error("Consumer failed");
+			consumerEventHandlers.get("error")?.(error);
+
+			expect(mockLogger.error).toHaveBeenCalledTimes(1);
+			expect(mockLogger.error).toHaveBeenCalledWith(
+				"SQS Consumer error",
+				error.stack,
+				"SqsServer",
+			);
+			expect(Logger.prototype.error).not.toHaveBeenCalled();
 		});
 
 		it("should record success metric after processing", async () => {

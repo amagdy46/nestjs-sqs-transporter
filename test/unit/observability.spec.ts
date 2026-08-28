@@ -354,10 +354,21 @@ describe("ObservabilityHelper", () => {
 			});
 
 			it("should record metric without throwing", () => {
-				// When OpenTelemetry API is installed (as a peer dep), it will use OTel's no-op meter
-				// When OpenTelemetry is not installed, it falls back to logging
-				// Either way, it should not throw
 				expect(() => helper.recordMetric("test.metric", 42)).not.toThrow();
+			});
+
+			it("should warn once and not log each metric when OpenTelemetry is unavailable", () => {
+				Object.defineProperty(helper, "meter", { value: undefined });
+
+				helper.recordMetric("test.metric", 1, { status: "success" });
+				helper.recordMetric("test.metric", 1, { status: "success" });
+
+				expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+				expect(mockLogger.warn).toHaveBeenCalledWith(
+					"OpenTelemetry metrics are unavailable; metrics will not be recorded",
+					"SqsMetrics",
+				);
+				expect(mockLogger.log).not.toHaveBeenCalled();
 			});
 
 			it("should record metric with attributes without throwing", () => {
@@ -526,7 +537,7 @@ describe("ObservabilityHelper", () => {
 			});
 
 			it("should record metrics after processing without throwing", () => {
-				// When OpenTelemetry is available, metrics go to OTel; otherwise to logger
+				// Metrics use OpenTelemetry when available and otherwise become a no-op.
 				expect(() => {
 					helper.recordMetric("sqs.message.processed", 1, {
 						pattern: "ORDER_CREATED",
