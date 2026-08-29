@@ -83,6 +83,7 @@ export class ClientSqs extends ClientProxy {
 	private readonly producer: Producer;
 	private readonly s3Handler?: S3LargeMessageHandler;
 	private readonly observability: ObservabilityHelper;
+	private readonly observabilityLoggingEnabled: boolean;
 	private readonly sqsSerializer: SqsSerializer;
 
 	/**
@@ -115,6 +116,25 @@ export class ClientSqs extends ClientProxy {
 
 		// Set up observability
 		this.observability = new ObservabilityHelper(options.observability);
+		this.observabilityLoggingEnabled = Boolean(
+			options.observability?.logging?.logger,
+		);
+	}
+
+	private logLifecycle(message: string): void {
+		if (this.observabilityLoggingEnabled) {
+			this.observability.log(message, "SqsClient");
+			return;
+		}
+		this.logger.log(message);
+	}
+
+	private logError(message: string, error: Error, nativeMessage: string): void {
+		if (this.observabilityLoggingEnabled) {
+			this.observability.logError(message, error, "SqsClient");
+			return;
+		}
+		this.logger.error(nativeMessage, error.stack);
 	}
 
 	/**
@@ -133,8 +153,7 @@ export class ClientSqs extends ClientProxy {
 	 * ```
 	 */
 	async connect(): Promise<void> {
-		this.logger.log("SQS Client connected");
-		this.observability.log("SQS Client connected", "SqsClient");
+		this.logLifecycle("SQS Client connected");
 	}
 
 	/**
@@ -151,8 +170,7 @@ export class ClientSqs extends ClientProxy {
 	 * ```
 	 */
 	close(): void {
-		this.logger.log("SQS Client closed");
-		this.observability.log("SQS Client closed", "SqsClient");
+		this.logLifecycle("SQS Client closed");
 	}
 
 	/**
@@ -332,14 +350,10 @@ export class ClientSqs extends ClientProxy {
 					return results;
 				} catch (error) {
 					const err = error as Error;
-					this.logger.error(
-						`Error sending batch to SQS: ${err.message}`,
-						err.stack,
-					);
-					this.observability.logError(
+					this.logError(
 						"Error sending batch to SQS",
 						err,
-						"SqsClient",
+						`Error sending batch to SQS: ${err.message}`,
 					);
 
 					// Record error metrics
@@ -459,14 +473,10 @@ export class ClientSqs extends ClientProxy {
 			return resultMessageId;
 		} catch (error) {
 			const err = error as Error;
-			this.logger.error(
-				`Error sending message to SQS: ${err.message}`,
-				err.stack,
-			);
-			this.observability.logError(
+			this.logError(
 				"Error sending message to SQS",
 				err,
-				"SqsClient",
+				`Error sending message to SQS: ${err.message}`,
 			);
 
 			// Record error metric

@@ -57,6 +57,7 @@ export class ObservabilityHelper {
 	private readonly meter?: OtelMeter;
 	private readonly counters: Map<string, OtelCounter> = new Map();
 	private readonly histograms: Map<string, OtelHistogram> = new Map();
+	private missingMetricsWarningLogged = false;
 
 	constructor(options?: ObservabilityOptions) {
 		this.logger = options?.logging?.logger;
@@ -139,7 +140,11 @@ export class ObservabilityHelper {
 
 		switch (this.logLevel) {
 			case "debug":
-				this.logger.debug?.(message, context);
+				if (this.logger.debug) {
+					this.logger.debug(message, context);
+				} else {
+					this.logger.log(message, context);
+				}
 				break;
 			case "info":
 				this.logger.log(message, context);
@@ -164,7 +169,7 @@ export class ObservabilityHelper {
 	}
 
 	/**
-	 * Record a metric using OpenTelemetry if available, otherwise log as fallback.
+	 * Record a metric using OpenTelemetry if available.
 	 * Duration metrics are recorded as histograms, count metrics as counters.
 	 */
 	recordMetric(
@@ -202,10 +207,12 @@ export class ObservabilityHelper {
 			return;
 		}
 
-		// Fallback to logging if OpenTelemetry is not available
-		this.log(
-			`Metric: ${name}=${value} ${JSON.stringify(attributes ?? {})}`,
-			"SqsMetrics",
-		);
+		if (!this.missingMetricsWarningLogged) {
+			this.logger?.warn(
+				"OpenTelemetry metrics are unavailable; metrics will not be recorded",
+				"SqsMetrics",
+			);
+			this.missingMetricsWarningLogged = true;
+		}
 	}
 }
